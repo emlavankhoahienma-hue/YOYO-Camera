@@ -242,7 +242,7 @@ final class CameraManagersContainer: ObservableObject {
         }
 
         // Resume the camera if no full-screen cover is being shown
-        if !viewState.showingPhotoGallery, !viewState.showingSettings {
+        if !viewState.showingPhotoGallery, !viewState.showingSettings, !viewState.showingAutomationSettings {
             startCamera()
         }
     }

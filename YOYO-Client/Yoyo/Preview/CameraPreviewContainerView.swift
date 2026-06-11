@@ -83,6 +83,14 @@ struct CameraPreviewContainerView: View {
             // zoomobserve
             zoomCancellable?.cancel()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
+        ) { _ in
+            // The pending inspiration preview is a full-screen, tap-absorbing overlay built from a
+            // frozen camera frame; if it survives a background/foreground cycle it is stale and
+            // silently swallows every tap on the controls underneath
+            viewModel.pendingInspirationImage = nil
+        }
         .onReceive(NotificationCenter.default.publisher(for: .cameraCaptureStateChanged)) { notification in
             if let newState = notification.userInfo?[CameraNotificationKeys.captureState] as? CaptureState {
                 captureState = newState

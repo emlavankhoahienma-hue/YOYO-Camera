@@ -488,6 +488,10 @@ private struct CameraStateObserver: ViewModifier {
             cameraManagers.stopCamera()
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                // The delayed block may fire right after returning from background; in that case
+                // starting the session would be interrupted immediately, and `handleEnterForeground`
+                // is responsible for restarting the camera instead
+                guard UIApplication.shared.applicationState != .background else { return }
                 let allCoversClosed =
                     !cameraManagers.viewState.showingPhotoGallery
                         && !cameraManagers.viewState.showingSettings

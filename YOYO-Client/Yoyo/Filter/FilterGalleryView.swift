@@ -527,7 +527,10 @@ struct FilterScrollGroupsModern: View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 14) {
+                    // Lazy so that opening the gallery only builds the visible cards; building every
+                    // card eagerly stalls the main thread on first open and drops the taps that
+                    // arrive during the opening animation
+                    LazyHStack(alignment: .top, spacing: 14) {
                         filterGroupsContent(geometry: geometry)
                     }
                     .padding(.vertical, 6)
