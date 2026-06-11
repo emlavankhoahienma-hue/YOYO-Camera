@@ -63,6 +63,14 @@ final class VolumeButtonManager: NSObject, ObservableObject {
     /// volumeviewwhetheradd
     private static var volumeViewAddedToWindow = false
 
+    /// AVAudioSession operationqueue
+    /// `setCategory`/`setActive` can block for hundreds of milliseconds (especially right after
+    /// returning to foreground while the capture session is restarting), so never run them on main
+    private let audioSessionQueue = DispatchQueue(
+        label: "com.day1-labs.yoyo.volume.audio-session",
+        qos: .userInitiated
+    )
+
     /// volumecallback
     var onVolumeButtonPressed: (() -> Void)?
     /// volumestatecallback (isDown, volume, touching)
@@ -233,6 +241,12 @@ final class VolumeButtonManager: NSObject, ObservableObject {
 
     /// configureaudiosession
     private func configureAudioSession() {
+        audioSessionQueue.async { [weak self] in
+            self?.configureAudioSessionSync()
+        }
+    }
+
+    private func configureAudioSessionSync() {
         do {
             let audioSession = AVAudioSession.sharedInstance()
 
