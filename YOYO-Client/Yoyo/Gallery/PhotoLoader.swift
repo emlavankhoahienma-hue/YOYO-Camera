@@ -390,15 +390,26 @@ struct AsyncThumbnailImage: View {
 
         if Task.isCancelled { return }
 
-        await MainActor.run {
+        let shouldAutoRetry = await MainActor.run { () -> Bool in
             if let image {
                 loadedImage = image
                 loadState = .success
-            } else {
-                // If loading fails, check whether the resource exists to distinguish the error type.
-                let exists = imageCache.assetExists(assetIdentifier)
-                loadState = exists ? .failed : .notFound
+                return false
             }
+            // If loading fails, check whether the resource exists to distinguish the error type.
+            let exists = imageCache.assetExists(assetIdentifier)
+            loadState = exists ? .failed : .notFound
+            // Photos can transiently fail (or report the asset missing) right after cold launch,
+            // so retry automatically instead of waiting for a manual tap
+            guard retryCount < maxRetries else { return false }
+            retryCount += 1
+            return true
+        }
+
+        if shouldAutoRetry {
+            try? await Task.sleep(nanoseconds: UInt64(retryCount) * 800_000_000)
+            if Task.isCancelled { return }
+            await loadImage()
         }
     }
 }

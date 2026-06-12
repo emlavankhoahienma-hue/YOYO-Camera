@@ -28,7 +28,12 @@ final class InspirationManager: ObservableObject {
             }
             .store(in: &cancellables)
 
-        loadHistory()
+        // The manager is created on the main thread during camera view setup at cold launch;
+        // decoding the entire history (JSON + every cached image) synchronously here can block
+        // the main thread for seconds and drop taps on the freshly shown controls
+        Task { [weak self] in
+            await self?.loadHistoryAsync()
+        }
     }
 
     func requestAIInspirations(from image: UIImage?) async {
@@ -221,24 +226,38 @@ final class InspirationManager: ObservableObject {
         }
     }
 
-    private func loadHistory() {
-        ensureDirectoriesExist()
-        do {
-            guard FileManager.default.fileExists(atPath: historyFile.path) else { return }
-            let data = try Data(contentsOf: historyFile)
-            var loadedHistory = try JSONDecoder().decode([AIInspiration].self, from: data)
+    private func loadHistoryAsync() async {
+        let historyFile = self.historyFile
+        let imagesDirectory = self.imagesDirectory
 
-            // Load images from disk
-            for i in 0 ..< loadedHistory.count {
-                if let image = loadImage(for: loadedHistory[i].id) {
-                    loadedHistory[i].image = image
+        let loadedHistory = await Task.detached(priority: .utility) { () -> [AIInspiration]? in
+            do {
+                try FileManager.default.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
+                guard FileManager.default.fileExists(atPath: historyFile.path) else { return nil }
+                let data = try Data(contentsOf: historyFile)
+                var loadedHistory = try JSONDecoder().decode([AIInspiration].self, from: data)
+
+                // Load images from disk
+                for i in 0 ..< loadedHistory.count {
+                    let fileURL = imagesDirectory.appendingPathComponent("\(loadedHistory[i].id.uuidString).jpg")
+                    if let imageData = try? Data(contentsOf: fileURL),
+                       let image = UIImage(data: imageData)
+                    {
+                        loadedHistory[i].image = image
+                    }
                 }
+                return loadedHistory
+            } catch {
+                print("Failed to load history: \(error)")
+                return nil
             }
+        }.value
 
-            historyInspirations = loadedHistory
-        } catch {
-            print("Failed to load history: \(error)")
-        }
+        guard let loadedHistory else { return }
+
+        // Items added while the history was still loading stay first (they are newer)
+        let inMemoryIDs = Set(historyInspirations.map(\.id))
+        historyInspirations += loadedHistory.filter { !inMemoryIDs.contains($0.id) }
     }
 
     private func saveImage(_ image: UIImage, for id: UUID) {
@@ -247,12 +266,6 @@ final class InspirationManager: ObservableObject {
         if let data = image.jpegData(compressionQuality: 0.8) {
             try? data.write(to: fileURL)
         }
-    }
-
-    private func loadImage(for id: UUID) -> UIImage? {
-        let fileURL = imagesDirectory.appendingPathComponent("\(id.uuidString).jpg")
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return UIImage(data: data)
     }
 
     private func deleteImage(for id: UUID) {
