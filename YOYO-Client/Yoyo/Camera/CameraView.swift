@@ -57,6 +57,14 @@ struct CameraView: View {
             cameraManagers.handleEnterForeground()
             requestLatestPhotoRefresh()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+        ) { _ in
+            // On cold launch `willEnterForeground` never fires, so the `.task` refresh is the only
+            // attempt and it can permanently give up while the app is still `.inactive` (the Photos
+            // existence checks are unreliable before activation). Retry once we are truly active.
+            if latestPhoto == nil { requestLatestPhotoRefresh() }
+        }
         .fullScreenCover(isPresented: $cameraManagers.viewState.showingPhotoGallery) {
             photoGalleryView
         }
@@ -353,7 +361,7 @@ struct CameraView: View {
         }
 
         // The Photos framework may not be fully initialized on cold launch, so retry with increasing delays
-        let retryDelays: [UInt64] = [0, 500_000_000, 1_000_000_000, 2_000_000_000]
+        let retryDelays: [UInt64] = [0, 500_000_000, 1_000_000_000, 2_000_000_000, 3_000_000_000]
         for delay in retryDelays {
             if Task.isCancelled {
                 await MainActor.run { latestPhotoRefreshTask = nil }
