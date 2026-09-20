@@ -14,19 +14,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16
+      - name: Select working Xcode with iOS Platform
         run: |
-          ls -d /Applications/Xcode*.app
-          if [ -d "/Applications/Xcode_16.2.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_16.1.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_16.0.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_16.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+          cd YOYO-Client
+          SELECTED=""
+          for xc in /Applications/Xcode_16*.app /Applications/Xcode.app; do
+            if [ -d "$xc" ]; then
+              echo "Testing $xc..."
+              sudo xcode-select -s "$xc/Contents/Developer"
+              if xcodebuild -showdestinations -project Yoyo.xcodeproj -scheme Yoyo | grep -q "name:Any iOS Device" && ! xcodebuild -showdestinations -project Yoyo.xcodeproj -scheme Yoyo | grep -A 2 "name:Any iOS Device" | grep -q "error:iOS"; then
+                echo "===> Found suitable Xcode: $xc"
+                SELECTED="$xc"
+                break
+              fi
+            fi
+          done
+
+          if [ -z "$SELECTED" ]; then
+            echo "No Xcode has preinstalled iOS platform runtime. Attempting download..."
+            sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+            sudo xcodebuild -downloadPlatform iOS || true
           fi
+
           xcodebuild -version
+          xcodebuild -showsdks
 
       - name: Resolve Swift Package Dependencies
         run: |
@@ -40,10 +51,12 @@ jobs:
             -project Yoyo.xcodeproj \
             -scheme Yoyo \
             -configuration Release \
-            -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             -derivedDataPath ./build
 
       - name: Package IPA
